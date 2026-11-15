@@ -48,7 +48,14 @@ export default function Login() {
         {error && <p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error.status === 401 ? 'Incorrect email or password.' : error.message}</p>}
         <form onSubmit={submit} className="mt-6 space-y-4" noValidate>
           <Input label="Email" type="email" autoComplete="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
-          <Input label="Password" type="password" autoComplete="current-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
+          <div>
+            <Input label="Password" type="password" autoComplete="current-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
+            <div className="mt-1 text-right">
+              <Link to="/forgot-password" state={{ email: form.email }} className="text-xs font-semibold text-court hover:underline">
+                Forgot password?
+              </Link>
+            </div>
+          </div>
           <Button type="submit" loading={busy} className="w-full">Log in</Button>
         </form>
         <p className="mt-6 text-center text-sm text-slate-600">New here? <Link to="/register" state={{ from }} className="font-semibold text-court hover:underline">Create an account</Link></p>

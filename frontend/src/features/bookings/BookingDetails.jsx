@@ -19,6 +19,7 @@ export default function BookingDetails() {
   if (state.error) return <ErrorState error={state.error} onRetry={state.reload} />
   const b = state.data
   const needsPayment = !STATUS.paymentSuccess.includes(b.paymentStatus) && !STATUS.bookingCancelled.includes(b.status)
+  const isDemo = b.paymentMethod?.includes('DEMO') || b.transactionId?.startsWith('SIM_TXN')
 
   const rows = [
     ['Booking reference', b.reference ?? b.id],
@@ -50,9 +51,25 @@ export default function BookingDetails() {
             <dt className="text-slate-600">Payment status</dt>
             <dd>{b.paymentStatus ? <StatusBadge status={b.paymentStatus} /> : '—'}</dd>
           </div>
+          {isDemo && (
+            <div className="flex justify-between">
+              <dt className="text-slate-600">Payment mode</dt>
+              <dd>
+                <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 border border-emerald-200">
+                  Demo Payment
+                </span>
+              </dd>
+            </div>
+          )}
+          {b.transactionId && (
+            <div className="flex justify-between">
+              <dt className="text-slate-600">Transaction ID</dt>
+              <dd className="font-mono text-xs font-medium text-navy">{b.transactionId}</dd>
+            </div>
+          )}
         </dl>
         <div className="mt-6 flex flex-wrap gap-3">
-          {needsPayment && <Button to={`/checkout/${b.id}`}>Pay now with Razorpay</Button>}
+          {needsPayment && <Button to={`/checkout/${b.id}`}>Complete Payment</Button>}
           {isCancellable(b) && <Button variant="danger" onClick={() => askCancel(b)}>Cancel booking</Button>}
           <Button to="/my-bookings" variant="outline">Back to bookings</Button>
         </div>

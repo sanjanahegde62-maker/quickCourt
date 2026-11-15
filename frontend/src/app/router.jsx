@@ -11,6 +11,7 @@ import NotFound from '../features/venues/NotFound'
 import Login from '../features/auth/Login'
 import Register from '../features/auth/Register'
 import VerifyOtp from '../features/auth/VerifyOtp'
+import ForgotPassword from '../features/auth/ForgotPassword'
 import Profile from '../features/profile/Profile'
 
 import PlayerDashboard from '../features/bookings/PlayerDashboard'
@@ -44,6 +45,7 @@ export default function AppRoutes() {
         <Route path="about" element={<About />} />
         <Route path="login" element={<Login />} />
         <Route path="register" element={<Register />} />
+        <Route path="forgot-password" element={<ForgotPassword />} />
         <Route path="verify-otp" element={<VerifyOtp />} />
         <Route path="*" element={<NotFound />} />
       </Route>

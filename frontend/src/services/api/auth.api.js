@@ -24,6 +24,32 @@ export async function requestOtp(payload) {
   return data
 }
 
+export async function requestForgotPasswordOtp(email) {
+  const normalizedEmail = (email || '').trim()
+  const { data } = await client.post(ENDPOINTS.auth.forgotPasswordRequest, { email: normalizedEmail })
+  return data
+}
+
+export async function verifyForgotPasswordOtp({ email, otp }) {
+  const normalizedEmail = (email || '').trim()
+  const { data } = await client.post(ENDPOINTS.auth.forgotPasswordVerify, {
+    email: normalizedEmail,
+    otp: (otp || '').trim(),
+  })
+  return data
+}
+
+export async function resetPassword({ email, resetToken, newPassword, confirmPassword }) {
+  const normalizedEmail = (email || '').trim()
+  const { data } = await client.post(ENDPOINTS.auth.forgotPasswordReset, {
+    email: normalizedEmail,
+    resetToken,
+    newPassword,
+    confirmPassword,
+  })
+  return data
+}
+
 export async function verifyOtp(payload) {
   const { data } = await client.post(ENDPOINTS.auth.otpVerify, payload)
   const token = pick(data, 'token', 'accessToken', 'jwt')

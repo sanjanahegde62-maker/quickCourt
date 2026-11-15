@@ -38,6 +38,18 @@ export async function listOwnerBookings(params = {}, signal) {
   const { data } = await client.get(ENDPOINTS.owner.bookings, { params, signal })
   return toPage(data).items.map(toBooking)
 }
+export async function getOwnerBooking(id, signal) {
+  const { data } = await client.get(ENDPOINTS.owner.booking(id), { signal })
+  return toBooking(data)
+}
+export async function updateOwnerBookingStatus(bookingId, status) {
+  const { data } = await client.patch(ENDPOINTS.owner.bookingStatus(bookingId), { status })
+  return toBooking(data)
+}
+export async function cancelOwnerBooking(bookingId) {
+  const { data } = await client.post(ENDPOINTS.owner.bookingCancel(bookingId))
+  return toBooking(data)
+}
 export async function getOwnerAnalytics(signal) {
   const { data } = await client.get(ENDPOINTS.owner.analytics, { signal })
   return data

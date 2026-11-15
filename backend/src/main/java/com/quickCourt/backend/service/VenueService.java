@@ -64,8 +64,9 @@ public class VenueService {
             venue.setAmenities(amenities);
         }
 
-        venue.setApproved(false);
-        venue.setStatus("PENDING");
+        boolean isAdmin = owner.getRole() == Role.ADMIN;
+        venue.setApproved(isAdmin);
+        venue.setStatus(isAdmin ? "APPROVED" : "PENDING");
         venue.setOwner(owner);
 
         if (request.getOpeningTime() != null && !request.getOpeningTime().isBlank()) {
@@ -93,8 +94,31 @@ public class VenueService {
                 .toList();
     }
 
+    public void attachDemoVenuesIfNoneOwned(User owner) {
+        if (owner == null || (owner.getRole() != Role.FACILITY_OWNER && owner.getRole() != Role.ADMIN)) {
+            return;
+        }
+        List<Venue> owned = venueRepository.findByOwnerId(owner.getId());
+        if (owned.isEmpty()) {
+            List<Venue> demoVenues = venueRepository.findAll().stream()
+                    .filter(v -> v.getOwner() == null || "demo.owner@quickcourt.com".equalsIgnoreCase(v.getOwner().getEmail()))
+                    .toList();
+            if (!demoVenues.isEmpty()) {
+                for (Venue v : demoVenues) {
+                    v.setOwner(owner);
+                    venueRepository.save(v);
+                }
+            }
+        }
+    }
+
     public List<VenueResponse> getVenuesByOwner(Long ownerId) {
-        return venueRepository.findByOwnerId(ownerId).stream()
+        List<Venue> venues = venueRepository.findByOwnerId(ownerId);
+        if (venues.isEmpty()) {
+            userRepository.findById(ownerId).ifPresent(this::attachDemoVenuesIfNoneOwned);
+            venues = venueRepository.findByOwnerId(ownerId);
+        }
+        return venues.stream()
                 .map(this::toResponse)
                 .toList();
     }

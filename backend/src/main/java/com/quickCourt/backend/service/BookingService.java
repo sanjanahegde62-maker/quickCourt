@@ -25,6 +25,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Service
 @Transactional
@@ -312,6 +313,68 @@ public class BookingService {
     }
 
     /**
+     * Authoritatively confirms a booking via the DEMO / Simulated payment system.
+     * Enforces hold validity, idempotency, updates status to CONFIRMED, permanently blocks
+     * the court slot, generates a unique simulated transaction ID, and persists the payment record.
+     */
+    public BookingResponse confirmSimulatedPayment(Long bookingId, String paymentMethod, User currentUser) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking", bookingId));
+
+        verifyBookingAccess(booking, currentUser);
+
+        // 1. Idempotency: if already confirmed with a transaction ID, return idempotent response
+        if (booking.getStatus() == BookingStatus.CONFIRMED && booking.getTransactionId() != null) {
+            log.info("Booking #{} is already confirmed with transaction ID {}. Returning idempotent response.",
+                    bookingId, booking.getTransactionId());
+            return mapToResponse(booking);
+        }
+
+        // 2. Hold Expiry Check: Cannot confirm if hold expired or was cancelled
+        LocalDateTime now = LocalDateTime.now();
+        if (booking.getStatus() == BookingStatus.CANCELLED ||
+                (booking.getHoldExpiresAt() != null && booking.getHoldExpiresAt().isBefore(now))) {
+            booking.setStatus(BookingStatus.CANCELLED);
+            booking.setPaymentStatus("EXPIRED");
+            bookingRepository.save(booking);
+            log.warn("Booking #{} hold expired at {}. Payment confirmation rejected.", bookingId, booking.getHoldExpiresAt());
+            throw new IllegalStateException("Booking hold has expired. The court slot has been released. Please select a new slot.");
+        }
+
+        // 3. Generate unique simulated transaction ID
+        String simTxnId = "SIM_TXN_" + System.currentTimeMillis() + "_" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        String normalizedMethod = (paymentMethod != null && !paymentMethod.isBlank())
+                ? (paymentMethod.toUpperCase().startsWith("DEMO") ? paymentMethod.toUpperCase() : "DEMO_" + paymentMethod.toUpperCase())
+                : "DEMO_SIMULATED";
+
+        // 4. Update Booking status to CONFIRMED
+        booking.setStatus(BookingStatus.CONFIRMED);
+        booking.setPaymentStatus("SUCCESS");
+        booking.setPaymentMethod(normalizedMethod);
+        booking.setTransactionId(simTxnId);
+        booking.setHoldExpiresAt(null); // Clear hold expiry upon confirmation to make slot permanent
+
+        Booking savedBooking = bookingRepository.save(booking);
+
+        // 5. Persist Payment Record in backend
+        Payment payment = new Payment();
+        payment.setBooking(savedBooking);
+        payment.setUser(currentUser != null ? currentUser : savedBooking.getUser());
+        payment.setAmount(savedBooking.getTotalPrice());
+        payment.setCurrency("INR");
+        payment.setStatus("SUCCESS");
+        payment.setPaymentMethod(normalizedMethod);
+        payment.setRazorpayPaymentId(simTxnId);
+        payment.setFailureReason(null);
+        paymentRepository.save(payment);
+
+        log.info("Booking #{} confirmed successfully via DEMO payment method {} with transaction ID {}",
+                bookingId, normalizedMethod, simTxnId);
+
+        return mapToResponse(savedBooking);
+    }
+
+    /**
      * Webhook handler for payment.captured or order.paid events.
      */
     public void handlePaymentCaptured(String razorpayOrderId, String razorpayPaymentId, BigDecimal amount) {
@@ -508,6 +571,48 @@ public class BookingService {
                 .toList();
     }
 
+    public BookingResponse updateBookingStatus(Long bookingId, String newStatus, User currentUser) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking", bookingId));
+
+        verifyBookingAccess(booking, currentUser);
+
+        if (newStatus == null || newStatus.isBlank()) {
+            throw new IllegalArgumentException("Status is required");
+        }
+
+        BookingStatus targetStatus;
+        try {
+            targetStatus = BookingStatus.valueOf(newStatus.toUpperCase().trim());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid booking status: " + newStatus);
+        }
+
+        booking.setStatus(targetStatus);
+
+        if (targetStatus == BookingStatus.CONFIRMED) {
+            booking.setHoldExpiresAt(null);
+            if (!"SUCCESS".equalsIgnoreCase(booking.getPaymentStatus())) {
+                booking.setPaymentStatus("SUCCESS");
+                if (booking.getPaymentMethod() == null || booking.getPaymentMethod().isBlank()) {
+                    booking.setPaymentMethod("CONFIRMED_BY_OWNER");
+                }
+            }
+        } else if (targetStatus == BookingStatus.COMPLETED) {
+            booking.setHoldExpiresAt(null);
+            if (!"SUCCESS".equalsIgnoreCase(booking.getPaymentStatus())) {
+                booking.setPaymentStatus("SUCCESS");
+            }
+        } else if (targetStatus == BookingStatus.CANCELLED) {
+            booking.setHoldExpiresAt(null);
+            booking.setPaymentStatus("CANCELLED");
+        }
+
+        Booking saved = bookingRepository.save(booking);
+        log.info("Booking #{} status updated to {} by user {}", bookingId, targetStatus, currentUser != null ? currentUser.getEmail() : "anonymous");
+        return mapToResponse(saved);
+    }
+
     public BookingResponse cancelBooking(Long bookingId, User currentUser) {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking", bookingId));
@@ -564,8 +669,11 @@ public class BookingService {
         if (currentUser.getRole() == Role.ADMIN) {
             return;
         }
-        boolean isPlayer = booking.getUser().getId().equals(currentUser.getId());
-        boolean isOwner = booking.getCourt().getVenue().getOwner().getId().equals(currentUser.getId());
+        boolean isPlayer = booking.getUser() != null && booking.getUser().getId().equals(currentUser.getId());
+        boolean isOwner = booking.getCourt() != null &&
+                booking.getCourt().getVenue() != null &&
+                booking.getCourt().getVenue().getOwner() != null &&
+                booking.getCourt().getVenue().getOwner().getId().equals(currentUser.getId());
         if (!isPlayer && !isOwner) {
             throw new AccessDeniedException("You do not have permission to view or manage this booking");
         }

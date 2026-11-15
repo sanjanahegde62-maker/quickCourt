@@ -11,6 +11,9 @@ export async function getPaymentConfig(signal) {
       keyId: data?.keyId || '',
       currency: data?.currency || 'INR',
       webhookConfigured: Boolean(data?.webhookConfigured),
+      mode: data?.mode || (data?.configured ? 'LIVE' : 'DEMO'),
+      demoMode: data?.demoMode !== undefined ? Boolean(data?.demoMode) : !data?.configured,
+      message: data?.message || '',
     }
   } catch {
     return {
@@ -18,6 +21,9 @@ export async function getPaymentConfig(signal) {
       keyId: '',
       currency: 'INR',
       webhookConfigured: false,
+      mode: 'DEMO',
+      demoMode: true,
+      message: 'Running in simulated DEMO payment mode.',
     }
   }
 }
@@ -45,6 +51,16 @@ export async function getPaymentMethods(signal) {
   const { data } = await client.get(ENDPOINTS.payments.methods, { signal })
   const list = Array.isArray(data) ? data : pick(data, 'methods', 'content', 'items') || []
   return list.map((m) => (typeof m === 'string' ? { code: m, label: m } : { code: pick(m, 'code', 'id', 'name'), label: pick(m, 'label', 'name', 'code') }))
+}
+
+/** Submits a simulated DEMO payment request. */
+export async function simulatePayment({ bookingId, paymentMethod }) {
+  const { data } = await client.post(ENDPOINTS.payments.simulate, {
+    bookingId,
+    paymentMethod,
+    paymentMode: 'DEMO',
+  })
+  return toPayment(data)
 }
 
 /** Submits a payment request. */

@@ -15,8 +15,13 @@ export default function OwnerFacilities() {
 
   return (
     <div>
-      <PageHeader title="My facilities" subtitle="New facilities need admin approval before players can see them."
-        action={<Button onClick={() => setForm({})}>Create facility</Button>} />
+      <PageHeader title="My facilities" subtitle="Manage your sports venues and facilities."
+        action={
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => state.reload()}>Refresh</Button>
+            <Button onClick={() => setForm({})}>Create facility</Button>
+          </div>
+        } />
       {state.error ? <ErrorState error={state.error} onRetry={state.reload} />
         : state.loading && !state.data ? <ListSkeleton />
           : state.data.length === 0 ? <EmptyState icon="building" title="No facilities yet" message="Create your first facility to start taking bookings." action={<Button onClick={() => setForm({})}>Create facility</Button>} />

@@ -39,7 +39,7 @@ export default function PlayerDashboard() {
                     You have {pending.length} pending booking{pending.length > 1 ? 's' : ''} awaiting payment
                   </p>
                   <p className="text-xs text-amber-800">
-                    Your court is held temporarily. Complete Razorpay checkout to secure it.
+                    Your court is held temporarily. Complete checkout to secure it.
                   </p>
                 </div>
               </div>

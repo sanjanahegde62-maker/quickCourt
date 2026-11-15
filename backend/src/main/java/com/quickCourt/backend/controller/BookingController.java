@@ -33,7 +33,7 @@ public class BookingController {
         );
     }
 
-    @GetMapping("/me")
+    @GetMapping({"/me", "/my-bookings", "/user"})
     public ResponseEntity<List<BookingResponse>> getMyBookings(
             @AuthenticationPrincipal User currentUser) {
 
@@ -70,6 +70,30 @@ public class BookingController {
         return ResponseEntity.ok(
                 bookingService.cancelBooking(bookingId, currentUser)
         );
+    }
+
+    @PatchMapping("/{bookingId}/status")
+    public ResponseEntity<BookingResponse> updateBookingStatusPatch(
+            @PathVariable Long bookingId,
+            @RequestBody java.util.Map<String, String> body,
+            @AuthenticationPrincipal User currentUser) {
+        String status = body != null ? body.get("status") : null;
+        if (status == null || status.isBlank()) {
+            throw new IllegalArgumentException("Status is required");
+        }
+        return ResponseEntity.ok(bookingService.updateBookingStatus(bookingId, status, currentUser));
+    }
+
+    @PutMapping("/{bookingId}/status")
+    public ResponseEntity<BookingResponse> updateBookingStatusPut(
+            @PathVariable Long bookingId,
+            @RequestBody java.util.Map<String, String> body,
+            @AuthenticationPrincipal User currentUser) {
+        String status = body != null ? body.get("status") : null;
+        if (status == null || status.isBlank()) {
+            throw new IllegalArgumentException("Status is required");
+        }
+        return ResponseEntity.ok(bookingService.updateBookingStatus(bookingId, status, currentUser));
     }
 
     @PostMapping({"/{bookingId}/release", "/{bookingId}/hold/cancel"})

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { getBooking, releaseBookingHold } from '../../services/api/bookings.api'
-import { createRazorpayOrder, getPaymentConfig, verifyRazorpayPayment } from '../../services/api/payments.api'
+import { simulatePayment } from '../../services/api/payments.api'
 import useAsync from '../../hooks/useAsync'
 import { useAuth } from '../../auth/AuthProvider'
 import Button from '../../components/common/Button'
@@ -11,22 +11,6 @@ import { ErrorState, PageSpinner } from '../../components/common/Feedback'
 import { useToast } from '../../components/common/Toast'
 import { STATUS } from '../../config/endpoints'
 import { dateLong, money, timeRange, titleCase } from '../../utils/format'
-
-/** Helper to dynamically load the Razorpay checkout script */
-function loadRazorpayScript() {
-  return new Promise((resolve) => {
-    if (window.Razorpay) {
-      resolve(true)
-      return
-    }
-    const script = document.createElement('script')
-    script.src = 'https://checkout.razorpay.com/v1/checkout.js'
-    script.async = true
-    script.onload = () => resolve(true)
-    script.onerror = () => resolve(false)
-    document.body.appendChild(script)
-  })
-}
 
 function StepIndicator({ currentStep = 4 }) {
   const steps = [
@@ -85,13 +69,24 @@ export default function Checkout() {
   const { user } = useAuth()
 
   const booking = useAsync((s) => getBooking(bookingId, s), [bookingId])
-  const gatewayConfig = useAsync((s) => getPaymentConfig(s), [])
 
   const [busy, setBusy] = useState(false)
+  const [processingStage, setProcessingStage] = useState('')
   const [error, setError] = useState(null)
   const [timeLeft, setTimeLeft] = useState(600)
   const [isExpired, setIsExpired] = useState(false)
   const inFlight = useRef(false)
+
+  // Payment method options: 'upi', 'card', 'netbanking'
+  const [activeTab, setActiveTab] = useState('upi')
+  const [upiId, setUpiId] = useState('demo.player@okhdfcbank')
+  const [cardForm, setCardForm] = useState({
+    number: '4111 •••• •••• 4444',
+    name: user?.name || 'Demo Player',
+    expiry: '12/28',
+    cvv: '•••',
+  })
+  const [selectedBank, setSelectedBank] = useState('HDFC')
 
   const b = booking.data
 
@@ -133,7 +128,7 @@ export default function Checkout() {
             To prevent slot hoarding, courts are automatically released if payment is not completed within 10 minutes.
           </p>
           <div className="mt-6 flex justify-center gap-3">
-            <Button onClick={() => navigate(b.courtId ? `/courts/${b.courtId}/book` : '/venues')}>
+            <Button onClick={() => navigate(b.courtId ? `/book/${b.courtId}` : '/venues')}>
               Select a New Slot
             </Button>
             <Button variant="ghost" onClick={() => navigate('/my-bookings')}>
@@ -152,104 +147,45 @@ export default function Checkout() {
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
   }
 
-  const handleRazorpayPayment = async () => {
+  const handleSimulatedPayment = async () => {
     if (inFlight.current || isExpired) return
     inFlight.current = true
     setBusy(true)
     setError(null)
 
     try {
-      // 1. Ensure Razorpay Checkout SDK is loaded
-      const scriptLoaded = await loadRazorpayScript()
-      if (!scriptLoaded) {
-        throw new Error('Could not load the Razorpay payment gateway script. Please check your internet connection.')
+      // Realistic simulation animation stages
+      setProcessingStage('Connecting to simulated payment gateway...')
+      await new Promise((r) => setTimeout(r, 400))
+
+      if (activeTab === 'upi') {
+        setProcessingStage(`Authorizing UPI transfer (${upiId})...`)
+      } else if (activeTab === 'card') {
+        setProcessingStage('Verifying simulated card & 3D Secure...')
+      } else {
+        setProcessingStage(`Connecting to ${selectedBank} Net Banking...`)
       }
+      await new Promise((r) => setTimeout(r, 500))
 
-      // 2. Obtain authoritative Razorpay Order from server
-      const orderData = await createRazorpayOrder(b.id)
-      if (!orderData?.gatewayConfigured || !orderData?.orderId) {
-        setError({
-          title: 'Gateway Setup Required',
-          message:
-            orderData?.gatewayMessage ||
-            'Razorpay gateway is not configured on this server. Please supply RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in the backend environment variables (.env).',
-        })
-        setBusy(false)
-        inFlight.current = false
-        return
-      }
+      setProcessingStage('Confirming court booking & locking slot...')
 
-      // 3. Launch Razorpay Standard Checkout modal
-      const options = {
-        key: orderData.keyId,
-        amount: orderData.amountPaise,
-        currency: orderData.currency || 'INR',
-        name: 'QuickCourt',
-        description: `Booking #${b.id} - ${b.courtName || 'Court'}`,
-        order_id: orderData.orderId,
-        prefill: {
-          name: user?.name || b.userName || '',
-          email: user?.email || b.userEmail || '',
-          contact: user?.phone || '',
-        },
-        notes: {
-          bookingId: String(b.id),
-        },
-        theme: {
-          color: '#059669', // court emerald
-        },
-        modal: {
-          ondismiss: function () {
-            toast.info('Payment was cancelled or closed. Your slot remains held until the timer expires.')
-            setBusy(false)
-            inFlight.current = false
-          },
-        },
-        handler: async function (response) {
-          try {
-            setBusy(true)
-            toast.info('Verifying payment signature securely with server...')
-
-            // Authoritative server-side verification of HMAC-SHA256 signature
-            await verifyRazorpayPayment({
-              bookingId: b.id,
-              razorpayOrderId: response.razorpay_order_id,
-              razorpayPaymentId: response.razorpay_payment_id,
-              razorpaySignature: response.razorpay_signature,
-            })
-
-            toast.success('Payment verified successfully! Your booking is confirmed.')
-            navigate(`/bookings/${b.id}/confirmation`, { replace: true })
-          } catch (verifErr) {
-            setError({
-              title: 'Verification Failed',
-              message: verifErr.message || 'Payment verification failed. Please contact support.',
-            })
-            setBusy(false)
-            inFlight.current = false
-          }
-        },
-      }
-
-      const rzpInstance = new window.Razorpay(options)
-      rzpInstance.on('payment.failed', function (resp) {
-        setError({
-          title: 'Payment Failed',
-          message: resp?.error?.description || 'Your payment attempt was declined. You can try again.',
-        })
-        setBusy(false)
-        inFlight.current = false
+      const paymentMethod = `DEMO_${activeTab.toUpperCase()}`
+      const result = await simulatePayment({
+        bookingId: b.id,
+        paymentMethod,
       })
 
-      rzpInstance.open()
+      await new Promise((r) => setTimeout(r, 300))
+      toast.success('Simulated payment successful! Your booking is confirmed.')
+      navigate(`/bookings/${b.id}/confirmation`, { replace: true, state: { payment: result } })
     } catch (err) {
-      const msg = err?.message || 'Payment processing failed. Please try again.'
       setError({
-        title: 'Payment Error',
-        message: msg,
+        title: 'Payment Simulation Failed',
+        message: err?.message || 'Could not process simulated payment. Please try again.',
       })
       setBusy(false)
       inFlight.current = false
+      setProcessingStage('')
     }
   }
 
@@ -257,25 +193,31 @@ export default function Checkout() {
     try {
       await releaseBookingHold(b.id)
       toast.info('Slot hold was released.')
-      navigate(b.courtId ? `/courts/${b.courtId}/book` : '/venues')
+      navigate(b.courtId ? `/book/${b.courtId}` : '/venues')
     } catch (err) {
       toast.error(err)
     }
   }
 
-  const isGatewayReady = gatewayConfig.data?.configured
+  const banks = [
+    { code: 'HDFC', name: 'HDFC Bank' },
+    { code: 'ICICI', name: 'ICICI Bank' },
+    { code: 'SBI', name: 'State Bank of India' },
+    { code: 'AXIS', name: 'Axis Bank' },
+    { code: 'KOTAK', name: 'Kotak Mahindra' },
+  ]
 
   return (
     <div className="mx-auto max-w-2xl">
       <PageHeader
         title="Secure Checkout"
-        subtitle="Complete your payment via Razorpay to confirm your court booking."
+        subtitle="Complete your simulated payment to confirm your court booking."
       />
 
       <StepIndicator currentStep={4} />
 
       {/* Hold Expiration Countdown Banner */}
-      <div className="mb-6 flex items-center justify-between rounded-2xl border border-amber-200 bg-amber-50/80 px-5 py-3 text-amber-900 shadow-xs">
+      <div className="mb-6 flex items-center justify-between rounded-2xl border border-amber-200 bg-amber-50/90 px-5 py-3.5 text-amber-900 shadow-xs">
         <div className="flex items-center gap-2.5">
           <span className="text-xl">⏱</span>
           <div>
@@ -293,8 +235,29 @@ export default function Checkout() {
         </div>
       </div>
 
+      {/* Demo Payment Notice Banner */}
+      <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 shadow-xs">
+        <div className="flex items-start gap-3">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white font-bold text-sm">
+            ✓
+          </span>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="font-bold text-emerald-950">Demo Payment Mode Active</h3>
+              <span className="rounded-full bg-emerald-200/80 px-2 py-0.5 text-[10px] font-extrabold tracking-wide uppercase text-emerald-900">
+                Simulated
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-emerald-800">
+              QuickCourt is operating in demonstration mode. No real money will be charged or deducted.
+              Select any simulated payment method below to immediately confirm your court reservation.
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Booking Details Card */}
-      <div className="rounded-2xl border border-slate-200/80 bg-sky/50 p-6 shadow-xs">
+      <div className="rounded-2xl border border-slate-200/80 bg-sky/40 p-6 shadow-xs">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold text-navy">{b.facilityName || 'Court Booking'}</h2>
           <StatusBadge status={b.status} />
@@ -311,26 +274,182 @@ export default function Checkout() {
         </dl>
       </div>
 
-      {/* Gateway Configuration Warning if not configured */}
-      {!gatewayConfig.loading && !isGatewayReady && (
-        <div className="mt-6 rounded-2xl border border-amber-300 bg-amber-50 p-5 text-amber-900">
-          <div className="flex items-start gap-3">
-            <span className="text-xl">⚠️</span>
-            <div>
-              <h3 className="font-bold text-amber-950">Razorpay Setup Notice</h3>
-              <p className="mt-1 text-sm text-amber-800">
-                The Razorpay Payment Gateway credentials are not currently configured in this environment.
-                To enable live card, UPI, and netbanking payments, set <code className="rounded bg-amber-200/70 px-1 py-0.5 font-mono text-xs">RAZORPAY_KEY_ID</code> and <code className="rounded bg-amber-200/70 px-1 py-0.5 font-mono text-xs">RAZORPAY_KEY_SECRET</code> in the backend environment.
-              </p>
-              <p className="mt-2 text-xs text-amber-700">
-                Per security standards, simulated payments are disabled.
-              </p>
+      {/* Simulated Payment Methods */}
+      <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-xs">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <h3 className="text-base font-bold text-navy">Choose Payment Method</h3>
+          <span className="text-xs font-medium text-slate-500">100% Simulated · Instant</span>
+        </div>
+
+        {/* Tab buttons */}
+        <div className="mt-4 flex gap-2 border-b border-slate-200">
+          {[
+            { id: 'upi', label: 'UPI / QR', icon: '📱' },
+            { id: 'card', label: 'Debit / Credit Card', icon: '💳' },
+            { id: 'netbanking', label: 'Net Banking', icon: '🏦' },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-1.5 border-b-2 px-3.5 py-2.5 text-xs font-bold transition-colors ${
+                activeTab === tab.id
+                  ? 'border-court text-court'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <span>{tab.icon}</span>
+              <span>{tab.label}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Tab Content */}
+        <div className="mt-4">
+          {activeTab === 'upi' && (
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-700">
+                  Virtual Payment Address (VPA)
+                </label>
+                <input
+                  type="text"
+                  value={upiId}
+                  onChange={(e) => setUpiId(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm text-slate-900 focus:border-court focus:outline-none"
+                  placeholder="username@bank"
+                />
+              </div>
+
+              <div>
+                <span className="text-xs text-slate-500">Quick Test VPAs:</span>
+                <div className="mt-1.5 flex flex-wrap gap-2">
+                  {['demo.player@okhdfcbank', 'athlete@paytm', 'quickcourt@upi'].map((vpa) => (
+                    <button
+                      key={vpa}
+                      type="button"
+                      onClick={() => setUpiId(vpa)}
+                      className={`rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors ${
+                        upiId === vpa
+                          ? 'border-emerald-600 bg-emerald-50 text-emerald-800'
+                          : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      {vpa}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-3 text-center">
+                <span className="text-2xl">📱</span>
+                <p className="mt-1 text-xs font-medium text-slate-600">
+                  Simulated UPI Instant Transfer • Auto-approved in demo mode
+                </p>
+              </div>
             </div>
-          </div>
+          )}
+
+          {activeTab === 'card' && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-700">Card Details (Simulated)</span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCardForm({
+                      number: '4111 2222 3333 4444',
+                      name: 'Demo Player',
+                      expiry: '12/28',
+                      cvv: '123',
+                    })
+                  }
+                  className="text-xs font-bold text-court hover:underline"
+                >
+                  Quick Fill Test Card
+                </button>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-[11px] text-slate-500">Card Number</label>
+                <input
+                  type="text"
+                  value={cardForm.number}
+                  onChange={(e) => setCardForm({ ...cardForm, number: e.target.value })}
+                  className="w-full rounded-xl border border-slate-300 px-3.5 py-2 font-mono text-sm text-slate-900 focus:border-court focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-[11px] text-slate-500">Cardholder Name</label>
+                  <input
+                    type="text"
+                    value={cardForm.name}
+                    onChange={(e) => setCardForm({ ...cardForm, name: e.target.value })}
+                    className="w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm text-slate-900 focus:border-court focus:outline-none"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="mb-1 block text-[11px] text-slate-500">Expiry</label>
+                    <input
+                      type="text"
+                      value={cardForm.expiry}
+                      onChange={(e) => setCardForm({ ...cardForm, expiry: e.target.value })}
+                      className="w-full rounded-xl border border-slate-300 px-3 py-2 font-mono text-sm text-slate-900 focus:border-court focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] text-slate-500">CVV</label>
+                    <input
+                      type="password"
+                      maxLength={4}
+                      value={cardForm.cvv}
+                      onChange={(e) => setCardForm({ ...cardForm, cvv: e.target.value })}
+                      className="w-full rounded-xl border border-slate-300 px-3 py-2 font-mono text-sm text-slate-900 focus:border-court focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'netbanking' && (
+            <div className="space-y-3">
+              <label className="block text-xs font-semibold text-slate-700">Select Popular Bank</label>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {banks.map((bank) => (
+                  <button
+                    key={bank.code}
+                    type="button"
+                    onClick={() => setSelectedBank(bank.code)}
+                    className={`flex items-center gap-2 rounded-xl border p-2.5 text-left text-xs font-semibold transition-all ${
+                      selectedBank === bank.code
+                        ? 'border-court bg-emerald-50/70 text-emerald-900 shadow-xs'
+                        : 'border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span>🏦</span>
+                    <span className="truncate">{bank.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Processing Animation / Stage Banner */}
+      {busy && (
+        <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-center">
+          <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-court border-t-transparent mb-2" />
+          <p className="text-sm font-bold text-emerald-950">{processingStage || 'Processing payment...'}</p>
+          <p className="mt-0.5 text-xs text-emerald-700">Please do not refresh or close this page.</p>
         </div>
       )}
 
-      {/* Error Message if payment or verification failed */}
+      {/* Error Message if payment failed */}
       {error && (
         <div role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
           <p className="font-bold">{error.title || 'Payment Error'}</p>
@@ -342,14 +461,12 @@ export default function Checkout() {
       <div className="mt-6 flex flex-wrap items-center gap-4">
         <Button
           loading={busy}
-          disabled={isExpired || (!isGatewayReady && !gatewayConfig.loading)}
-          onClick={handleRazorpayPayment}
+          disabled={isExpired}
+          onClick={handleSimulatedPayment}
           size="lg"
-          className="flex-1 font-bold shadow-md"
+          className="flex-1 font-bold shadow-md bg-court hover:bg-emerald-700 text-white"
         >
-          {isGatewayReady
-            ? `Pay ${money(b.totalAmount)} with Razorpay`
-            : 'Gateway Not Configured (Test Credentials Required)'}
+          Pay {money(b.totalAmount)} (Demo Payment)
         </Button>
 
         <Button
@@ -363,7 +480,7 @@ export default function Checkout() {
       </div>
 
       <p className="mt-3 text-center text-xs text-slate-500">
-        🔒 All transactions are encrypted and cryptographically verified using Razorpay HMAC-SHA256 signatures.
+        🔒 Simulated demo transaction. Confirms booking and updates court calendar instantly in the database.
       </p>
     </div>
   )

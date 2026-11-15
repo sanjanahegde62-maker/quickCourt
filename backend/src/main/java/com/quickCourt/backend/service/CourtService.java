@@ -199,7 +199,7 @@ public class CourtService {
         if (user.getRole() == Role.ADMIN) {
             return;
         }
-        if (!venue.getOwner().getId().equals(user.getId())) {
+        if (venue.getOwner() == null || !venue.getOwner().getId().equals(user.getId())) {
             throw new AccessDeniedException("You do not have permission to modify courts for this venue");
         }
     }

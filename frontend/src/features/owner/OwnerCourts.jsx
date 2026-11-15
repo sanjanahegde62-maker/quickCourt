@@ -35,7 +35,10 @@ export default function OwnerCourts() {
       <FacilityCourtPicker facilityId={facilityId} onFacility={setFacilityId}>
         {({ facility, courts, reloadCourts }) => (
           <>
-            <div className="mb-4 flex justify-end"><Button onClick={() => setEditing({})}>Add court</Button></div>
+            <div className="mb-4 flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => reloadCourts()}>Refresh</Button>
+              <Button onClick={() => setEditing({})}>Add court</Button>
+            </div>
             {courts.loading && !courts.data ? <ListSkeleton rows={2} />
               : !courts.data?.length ? <EmptyState icon="grid" title="No courts yet" message="Add the first court for this facility." action={<Button onClick={() => setEditing({})}>Add court</Button>} />
                 : (

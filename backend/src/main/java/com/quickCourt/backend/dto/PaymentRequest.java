@@ -17,6 +17,8 @@ public class PaymentRequest {
 
     private String paymentMethod;
 
+    private String paymentMode;
+
     private String razorpayOrderId;
 
     private String razorpayPaymentId;

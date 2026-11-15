@@ -69,7 +69,7 @@ public class OwnerController {
             @AuthenticationPrincipal User currentUser) {
 
         Venue venue = venueService.findVenue(id);
-        if (!venue.getOwner().getId().equals(currentUser.getId()) && currentUser.getRole() != com.quickCourt.backend.entity.Role.ADMIN) {
+        if ((venue.getOwner() == null || !venue.getOwner().getId().equals(currentUser.getId())) && currentUser.getRole() != com.quickCourt.backend.entity.Role.ADMIN) {
             throw new AccessDeniedException("You do not own this facility");
         }
         return ResponseEntity.ok(venueService.toResponse(venue));
@@ -99,7 +99,7 @@ public class OwnerController {
             @AuthenticationPrincipal User currentUser) {
 
         Venue venue = venueService.findVenue(facilityId);
-        if (!venue.getOwner().getId().equals(currentUser.getId()) && currentUser.getRole() != com.quickCourt.backend.entity.Role.ADMIN) {
+        if ((venue.getOwner() == null || !venue.getOwner().getId().equals(currentUser.getId())) && currentUser.getRole() != com.quickCourt.backend.entity.Role.ADMIN) {
             throw new AccessDeniedException("You do not own this facility");
         }
         return ResponseEntity.ok(courtService.getCourtsByVenue(facilityId));
@@ -133,7 +133,7 @@ public class OwnerController {
         Court court = courtRepository.findById(id)
                 .orElseThrow(() -> new com.quickCourt.backend.exception.ResourceNotFoundException("Court", id));
         Venue venue = court.getVenue();
-        if (!venue.getOwner().getId().equals(currentUser.getId()) && currentUser.getRole() != com.quickCourt.backend.entity.Role.ADMIN) {
+        if ((venue.getOwner() == null || !venue.getOwner().getId().equals(currentUser.getId())) && currentUser.getRole() != com.quickCourt.backend.entity.Role.ADMIN) {
             throw new AccessDeniedException("You do not own this court");
         }
 
@@ -166,29 +166,70 @@ public class OwnerController {
 
     @GetMapping("/bookings")
     public ResponseEntity<List<BookingResponse>> getOwnerBookings(@AuthenticationPrincipal User currentUser) {
+        venueService.attachDemoVenuesIfNoneOwned(currentUser);
         return ResponseEntity.ok(bookingService.getOwnerBookings(currentUser));
+    }
+
+    @GetMapping("/bookings/{id}")
+    public ResponseEntity<BookingResponse> getOwnerBooking(
+            @PathVariable Long id,
+            @AuthenticationPrincipal User currentUser) {
+        venueService.attachDemoVenuesIfNoneOwned(currentUser);
+        return ResponseEntity.ok(bookingService.getBookingById(id, currentUser));
+    }
+
+    @PatchMapping("/bookings/{id}/status")
+    public ResponseEntity<BookingResponse> patchOwnerBookingStatus(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> body,
+            @AuthenticationPrincipal User currentUser) {
+        String status = body != null ? body.get("status") : null;
+        if (status == null || status.isBlank()) {
+            throw new IllegalArgumentException("Status is required");
+        }
+        return ResponseEntity.ok(bookingService.updateBookingStatus(id, status, currentUser));
+    }
+
+    @PutMapping("/bookings/{id}/status")
+    public ResponseEntity<BookingResponse> putOwnerBookingStatus(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> body,
+            @AuthenticationPrincipal User currentUser) {
+        String status = body != null ? body.get("status") : null;
+        if (status == null || status.isBlank()) {
+            throw new IllegalArgumentException("Status is required");
+        }
+        return ResponseEntity.ok(bookingService.updateBookingStatus(id, status, currentUser));
+    }
+
+    @PostMapping("/bookings/{id}/cancel")
+    public ResponseEntity<BookingResponse> cancelOwnerBooking(
+            @PathVariable Long id,
+            @AuthenticationPrincipal User currentUser) {
+        return ResponseEntity.ok(bookingService.cancelBooking(id, currentUser));
     }
 
     @GetMapping("/analytics")
     public ResponseEntity<Map<String, Object>> getOwnerAnalytics(@AuthenticationPrincipal User currentUser) {
+        venueService.attachDemoVenuesIfNoneOwned(currentUser);
         List<Booking> bookings = bookingRepository.findByCourtVenueOwnerIdOrderByBookingDateDescStartTimeDesc(currentUser.getId());
         long totalBookings = bookings.size();
 
         BigDecimal revenue = bookings.stream()
-                .filter(b -> b.getStatus() == com.quickCourt.backend.entity.BookingStatus.CONFIRMED)
+                .filter(b -> b.getStatus() == com.quickCourt.backend.entity.BookingStatus.CONFIRMED || b.getStatus() == com.quickCourt.backend.entity.BookingStatus.COMPLETED)
                 .map(Booking::getTotalPrice)
                 .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         long activeCourts = courtRepository.findAll().stream()
-                .filter(c -> c.getVenue().getOwner().getId().equals(currentUser.getId()) && "ACTIVE".equalsIgnoreCase(c.getStatus()))
+                .filter(c -> c.getVenue() != null && c.getVenue().getOwner() != null && c.getVenue().getOwner().getId().equals(currentUser.getId()) && "ACTIVE".equalsIgnoreCase(c.getStatus()))
                 .count();
 
         long totalVenues = venueRepository.findByOwnerId(currentUser.getId()).size();
 
         Map<String, Integer> bookingsBySport = bookings.stream()
                 .collect(Collectors.groupingBy(
-                        b -> b.getCourt().getSportType() != null ? b.getCourt().getSportType() : "OTHER",
+                        b -> (b.getCourt() != null && b.getCourt().getSportType() != null) ? b.getCourt().getSportType() : "OTHER",
                         Collectors.summingInt(b -> 1)
                 ));
 

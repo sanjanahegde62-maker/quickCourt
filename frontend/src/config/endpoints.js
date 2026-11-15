@@ -9,6 +9,9 @@ export const ENDPOINTS = {
   auth: {
     register: '/auth/register',
     login: '/auth/login',
+    forgotPasswordRequest: '/auth/forgot-password/request',
+    forgotPasswordVerify: '/auth/forgot-password/verify',
+    forgotPasswordReset: '/auth/forgot-password/reset',
     otpRequest: '/auth/otp/request',
     otpVerify: '/auth/otp/verify',
     logout: '/auth/logout',
@@ -33,6 +36,7 @@ export const ENDPOINTS = {
   },
   payments: {
     create: '/payments',
+    simulate: '/payments/simulate',
     detail: (id) => `/payments/${id}`,
     methods: '/payments/methods',
     config: '/payments/config',
@@ -48,6 +52,9 @@ export const ENDPOINTS = {
     availability: (courtId) => `/owner/courts/${courtId}/availability`,
     blocks: (courtId) => `/owner/courts/${courtId}/blocks`,
     bookings: '/owner/bookings',
+    booking: (id) => `/owner/bookings/${id}`,
+    bookingStatus: (id) => `/owner/bookings/${id}/status`,
+    bookingCancel: (id) => `/owner/bookings/${id}/cancel`,
     analytics: '/owner/analytics',
   },
   admin: {

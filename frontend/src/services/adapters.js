@@ -137,8 +137,13 @@ export function isCancellable(booking) {
 
 export function toBooking(d) {
   if (!d) return null
+  const userName = pick(d, 'userName', 'customerName', 'playerName', 'user')
+  const userEmail = pick(d, 'userEmail', 'customerEmail', 'playerEmail')
+  const userPhone = pick(d, 'userPhone', 'customerPhone', 'playerPhone', 'phone')
+  const bId = pick(d, 'id', 'bookingId')
   return {
-    id: pick(d, 'id', 'bookingId'),
+    id: bId,
+    reference: pick(d, 'reference') || (bId ? `QC-${bId}` : '—'),
     facilityId: pick(d, 'facilityId', 'venueId'),
     courtId: pick(d, 'courtId'),
     facilityName: pick(d, 'facilityName', 'venueName'),
@@ -159,8 +164,12 @@ export function toBooking(d) {
     gatewayConfigured: pick(d, 'gatewayConfigured'),
     gatewayMessage: pick(d, 'gatewayMessage'),
     createdAt: pick(d, 'createdAt', 'createdDate'),
-    userName: pick(d, 'userName', 'customerName'),
-    userEmail: pick(d, 'userEmail', 'customerEmail'),
+    userName,
+    playerName: userName,
+    userEmail,
+    playerEmail: userEmail,
+    userPhone,
+    playerPhone: userPhone,
   }
 }
 

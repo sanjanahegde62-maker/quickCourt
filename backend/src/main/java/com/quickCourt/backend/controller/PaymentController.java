@@ -45,15 +45,19 @@ public class PaymentController {
 
     /**
      * Exposes public gateway status and public Razorpay Key ID (never secrets).
+     * Indicates active payment mode (DEMO by default for demonstration).
      */
     @GetMapping("/config")
     public ResponseEntity<Map<String, Object>> getPaymentConfig() {
-        boolean configured = razorpayService.isConfigured();
+        boolean rzpConfigured = razorpayService.isConfigured();
         return ResponseEntity.ok(Map.of(
-                "configured", configured,
-                "keyId", configured ? razorpayService.getKeyId() : "",
+                "mode", "DEMO",
+                "demoMode", true,
+                "configured", true,
+                "keyId", rzpConfigured ? razorpayService.getKeyId() : "",
                 "currency", "INR",
-                "webhookConfigured", razorpayService.isWebhookConfigured()
+                "webhookConfigured", razorpayService.isWebhookConfigured(),
+                "razorpayConfigured", rzpConfigured
         ));
     }
 
@@ -162,9 +166,43 @@ public class PaymentController {
     }
 
     /**
+     * Dedicated DEMO / Simulated payment confirmation endpoint.
+     * Generates a unique transaction ID, validates hold, persists the payment record,
+     * and authoritatively confirms the booking.
+     */
+    @PostMapping({"/simulate", "/demo"})
+    public ResponseEntity<PaymentResponse> simulatePayment(
+            @Valid @RequestBody PaymentRequest request,
+            @AuthenticationPrincipal User currentUser) {
+
+        BookingResponse confirmed = bookingService.confirmSimulatedPayment(
+                request.getBookingId(),
+                request.getPaymentMethod(),
+                currentUser
+        );
+
+        PaymentResponse response = new PaymentResponse(
+                confirmed.getId(),
+                confirmed.getId(),
+                confirmed.getId(),
+                confirmed.getTotalPrice(),
+                confirmed.getTotalPrice(),
+                "SUCCESS",
+                "SUCCESS",
+                confirmed.getPaymentMethod(),
+                confirmed.getPaymentMethod(),
+                confirmed.getTransactionId(),
+                confirmed.getTransactionId(),
+                "Simulated payment processed and booking confirmed successfully"
+        );
+
+        return ResponseEntity.ok(response);
+    }
+
+    /**
      * Primary payment endpoint.
-     * Verifies Razorpay payment if credentials and signature are supplied.
-     * Rejects unverified fake payments.
+     * If Razorpay credentials & signatures are present, performs cryptographic verification.
+     * In DEMO mode or when requested as DEMO/SIMULATED, executes authoritative simulated confirmation.
      */
     @PostMapping
     public ResponseEntity<PaymentResponse> createPayment(
@@ -197,26 +235,36 @@ public class PaymentController {
             ));
         }
 
-        // Unverified simulation is rejected per requirements: "Do not retain simulated payment as a successful real payment"
-        if (!razorpayService.isConfigured()) {
-            return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED)
-                    .body(new PaymentResponse(
-                            null,
-                            null,
-                            request.getBookingId(),
-                            BigDecimal.ZERO,
-                            BigDecimal.ZERO,
-                            "GATEWAY_NOT_CONFIGURED",
-                            "PENDING",
-                            "RAZORPAY",
-                            "RAZORPAY",
-                            null,
-                            null,
-                            "Razorpay gateway is not configured. Please supply RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in backend configuration or .env."
-                    ));
+        // Handle DEMO / Simulated mode
+        boolean isDemo = "DEMO".equalsIgnoreCase(request.getPaymentMode()) ||
+                "SIMULATED".equalsIgnoreCase(request.getPaymentMode()) ||
+                (request.getPaymentMethod() != null && request.getPaymentMethod().toUpperCase().startsWith("DEMO")) ||
+                !razorpayService.isConfigured();
+
+        if (isDemo) {
+            BookingResponse confirmed = bookingService.confirmSimulatedPayment(
+                    request.getBookingId(),
+                    request.getPaymentMethod() != null ? request.getPaymentMethod() : "DEMO_SIMULATED",
+                    currentUser
+            );
+
+            return ResponseEntity.ok(new PaymentResponse(
+                    confirmed.getId(),
+                    confirmed.getId(),
+                    confirmed.getId(),
+                    confirmed.getTotalPrice(),
+                    confirmed.getTotalPrice(),
+                    "SUCCESS",
+                    "SUCCESS",
+                    confirmed.getPaymentMethod(),
+                    confirmed.getPaymentMethod(),
+                    confirmed.getTransactionId(),
+                    confirmed.getTransactionId(),
+                    "Simulated payment processed and booking confirmed successfully"
+            ));
         }
 
-        throw new IllegalArgumentException("Payment cannot be confirmed without valid Razorpay transaction signature. Use /api/payments/razorpay/verify.");
+        throw new IllegalArgumentException("Payment cannot be confirmed without valid transaction signature or demo mode parameter.");
     }
 
     @GetMapping("/{id}")
@@ -264,7 +312,9 @@ public class PaymentController {
     @GetMapping("/methods")
     public ResponseEntity<List<Map<String, String>>> getPaymentMethods() {
         return ResponseEntity.ok(List.of(
-                Map.of("code", "RAZORPAY", "label", "Razorpay Secure Checkout (UPI, Cards, NetBanking, Wallets)")
+                Map.of("code", "UPI", "label", "UPI (Google Pay, PhonePe, Paytm - Demo)", "mode", "DEMO"),
+                Map.of("code", "CARD", "label", "Debit / Credit Card (Demo)", "mode", "DEMO"),
+                Map.of("code", "NETBANKING", "label", "Net Banking (Demo Simulation)", "mode", "DEMO")
         ));
     }
 }

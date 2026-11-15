@@ -5,6 +5,7 @@ import { isCancellable } from '../../services/adapters'
 
 export default function BookingCard({ booking: b, onCancel }) {
   const isPending = b.status === 'PENDING'
+  const isDemo = b.paymentMethod?.includes('DEMO') || b.transactionId?.startsWith('SIM_TXN')
 
   return (
     <article className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between shadow-xs hover:border-slate-300 transition-colors">
@@ -14,6 +15,11 @@ export default function BookingCard({ booking: b, onCancel }) {
           {isPending && (
             <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
               ⏱ Slot Held
+            </span>
+          )}
+          {isDemo && (
+            <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-800 border border-emerald-200">
+              Demo Payment
             </span>
           )}
         </div>
