@@ -1,0 +1,8 @@
+# QuickCourt Root .gitignore
+.quickcourt/
+backend/target/
+backend/data/
+frontend/dist/
+frontend/node_modules/
+.idea/
+*.log
