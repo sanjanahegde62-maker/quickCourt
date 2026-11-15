@@ -1,0 +1,5 @@
+com\quickCourt\backend\VenueAndCourtIntegrationTest.class
+com\quickCourt\backend\AuthIntegrationTest.class
+com\quickCourt\backend\BackendApplicationTests.class
+com\quickCourt\backend\BookingLifecycleAndConcurrencyIntegrationTest.class
+com\quickCourt\backend\RazorpayPaymentAndSlotHoldIntegrationTest.class
