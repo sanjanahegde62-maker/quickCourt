@@ -3,7 +3,8 @@ import { ENDPOINTS, FEATURES } from '../../config/endpoints'
 import { pick, toUser } from '../adapters'
 
 export async function login({ email, password }) {
-  const { data } = await client.post(ENDPOINTS.auth.login, { email, password })
+  const normalizedEmail = (email || '').trim()
+  const { data } = await client.post(ENDPOINTS.auth.login, { email: normalizedEmail, password })
   const token = pick(data, 'token', 'accessToken', 'jwt')
   if (token) tokenStore.set(token)
   // Some backends return the user inline, others need a follow-up call.
@@ -13,7 +14,8 @@ export async function login({ email, password }) {
 }
 
 export async function register(payload) {
-  const { data } = await client.post(ENDPOINTS.auth.register, payload)
+  const normalizedPayload = payload?.email ? { ...payload, email: payload.email.trim() } : payload
+  const { data } = await client.post(ENDPOINTS.auth.register, normalizedPayload)
   return data
 }
 

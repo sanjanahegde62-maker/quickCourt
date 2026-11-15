@@ -38,7 +38,7 @@ export default function Register() {
       await register({ name: form.name.trim(), email: form.email.trim(), password: form.password, role: form.accountType })
       if (FEATURES.otp) return navigate('/verify-otp', { state: { email: form.email, from: location.state?.from } })
       toast.success('Account created. Please log in.')
-      navigate('/login', { state: { from: location.state?.from } })
+      navigate('/login', { state: { email: form.email.trim(), from: location.state?.from } })
     } catch (err) {
       if (err.fieldErrors) setErrors(err.fieldErrors)
       setError(err)

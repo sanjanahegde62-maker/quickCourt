@@ -10,7 +10,7 @@ export default function Login() {
   const { user, login, sessionExpired } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-  const [form, setForm] = useState({ email: '', password: '' })
+  const [form, setForm] = useState({ email: location.state?.email || '', password: '' })
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
 
@@ -24,11 +24,13 @@ export default function Login() {
     e.preventDefault()
     if (busy) return
     setError(null)
-    if (!form.email || !form.password) return setError({ message: 'Enter your email and password.' })
+    const email = form.email.trim()
+    const password = form.password
+    if (!email || !password) return setError({ message: 'Enter your email and password.' })
     setBusy(true)
     try {
-      const res = await login(form)
-      if (FEATURES.otp && res.needsOtp) return navigate('/verify-otp', { state: { email: form.email, from } })
+      const res = await login({ email, password })
+      if (FEATURES.otp && res.needsOtp) return navigate('/verify-otp', { state: { email, from } })
       navigate(target(res.user), { replace: true })
     } catch (err) {
       setError(err)
@@ -43,7 +45,7 @@ export default function Login() {
         <h1 className="text-2xl font-bold">Welcome back</h1>
         <p className="mt-1 text-sm text-slate-600">Log in to book courts and manage your games.</p>
         {sessionExpired && !error && <p role="status" className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">Your session expired. Please log in again.</p>}
-        {error && <p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error.status === 401 || error.status === 400 ? 'Incorrect email or password.' : error.message}</p>}
+        {error && <p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error.status === 401 ? 'Incorrect email or password.' : error.message}</p>}
         <form onSubmit={submit} className="mt-6 space-y-4" noValidate>
           <Input label="Email" type="email" autoComplete="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
           <Input label="Password" type="password" autoComplete="current-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />

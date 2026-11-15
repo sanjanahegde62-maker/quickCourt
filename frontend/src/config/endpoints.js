@@ -1,10 +1,8 @@
 /**
  * SINGLE SOURCE OF TRUTH for backend integration.
  *
- * !! Every path, query-param name, status value and role name below is taken from the
- * !! proposed contract in the QuickCourt spec. None of it has been verified against the
- * !! Spring Boot backend yet. When the backend is audited, edit ONLY this file
- * !! (and src/services/adapters.js for response field names).
+ * Every path, query-param name, status value and role name below is aligned with
+ * the QuickCourt Spring Boot backend controllers.
  */
 
 export const ENDPOINTS = {
@@ -31,12 +29,16 @@ export const ENDPOINTS = {
     mine: '/bookings/me',
     detail: (id) => `/bookings/${id}`,
     cancel: (id) => `/bookings/${id}/cancel`,
+    release: (id) => `/bookings/${id}/release`,
   },
   payments: {
     create: '/payments',
     detail: (id) => `/payments/${id}`,
-    // Set to a path (e.g. '/payments/methods') if the backend exposes demo methods.
-    methods: null,
+    methods: '/payments/methods',
+    config: '/payments/config',
+    order: '/payments/razorpay/order',
+    verify: '/payments/razorpay/verify',
+    webhook: '/payments/razorpay/webhook',
   },
   owner: {
     facilities: '/owner/facilities',
@@ -61,8 +63,8 @@ export const ENDPOINTS = {
 
 /** Feature flags. Turn off what the backend does not implement so the UI hides it. */
 export const FEATURES = {
-  otp: false, // set true only if /auth/otp/* exists
-  serverLogout: false, // set true if POST /auth/logout exists
+  otp: false,
+  serverLogout: true,
   reviews: true,
   ownerBlocks: true,
   adminBan: true,
@@ -95,8 +97,12 @@ export const ROLE_MAP = {
 /** Status values (UPPERCASE) the UI reacts to. Adjust to the backend's enums. */
 export const STATUS = {
   slotAvailable: ['AVAILABLE', 'FREE', 'OPEN'],
+  slotHeld: ['HELD'],
+  slotBooked: ['BOOKED'],
+  slotPast: ['PAST'],
+  bookingPending: ['PENDING'],
   bookingCancellable: ['PENDING', 'CONFIRMED', 'BOOKED'],
-  bookingUpcoming: ['PENDING', 'CONFIRMED', 'BOOKED'],
+  bookingUpcoming: ['CONFIRMED', 'BOOKED'],
   bookingCompleted: ['COMPLETED'],
   bookingCancelled: ['CANCELLED', 'CANCELED'],
   paymentSuccess: ['SUCCESS', 'PAID', 'COMPLETED'],
@@ -111,7 +117,7 @@ export const STATUS = {
 
 export const SPORTS_FALLBACK = ['BADMINTON', 'TENNIS', 'FOOTBALL', 'BASKETBALL']
 
-/** Sort values sent in the `sort` param. Guesses: confirm with the backend. */
+/** Sort values sent in the `sort` param. */
 export const SORT_OPTIONS = [
   { value: '', label: 'Relevance' },
   { value: 'price,asc', label: 'Price: low to high' },

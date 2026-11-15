@@ -1,7 +1,5 @@
 /**
  * Response adapters. They translate backend DTO field names into the shapes the UI uses.
- * Field names tried here are GUESSES from the spec; adjust after auditing the DTOs.
- * Unknown fields stay undefined and the UI simply hides them (no fake values).
  */
 import { ROLE_MAP, STATUS } from '../config/endpoints'
 
@@ -27,7 +25,7 @@ export function toUser(d) {
     phone: pick(d, 'phone', 'phoneNumber', 'mobile'),
     role: normalizeRole(pick(d, 'role', 'roles', 'authorities')),
     rawRole: pick(d, 'role'),
-    status: upper(pick(d, 'status')),
+    status: upper(pick(d, 'status')) || 'ACTIVE',
     verified: pick(d, 'verified', 'emailVerified', 'isVerified'),
   }
 }
@@ -47,20 +45,40 @@ export function toPage(d, page = 0) {
 export function toFacility(d) {
   if (!d) return null
   const photos = pick(d, 'photos', 'images', 'photoUrls') || []
+  const photosArr = Array.isArray(photos) ? photos : typeof photos === 'string' ? photos.split(/[\r\n,]+/) : []
+  const rawSports = pick(d, 'sportTypes', 'sports')
+  const sportsArr = Array.isArray(rawSports)
+    ? rawSports
+    : pick(d, 'sportType')
+      ? String(pick(d, 'sportType')).split(',')
+      : []
+
+  const status = upper(pick(d, 'status', 'approvalStatus')) || (d?.approved === true ? 'APPROVED' : d?.approved === false ? 'PENDING' : 'PENDING')
+
+  const rawAmenities = pick(d, 'amenities', 'amenityList') || []
+  const amenitiesArr = Array.isArray(rawAmenities)
+    ? rawAmenities
+    : typeof rawAmenities === 'string'
+      ? rawAmenities.split(',').map((s) => s.trim()).filter(Boolean)
+      : []
+
   return {
-    id: pick(d, 'id', 'facilityId'),
+    id: pick(d, 'id', 'facilityId', 'venueId'),
     ownerId: pick(d, 'ownerId'),
     name: pick(d, 'name', 'facilityName'),
     location: pick(d, 'location', 'city', 'address'),
     address: pick(d, 'address', 'location'),
+    city: pick(d, 'city'),
+    pincode: pick(d, 'pincode'),
     description: pick(d, 'description'),
-    sportTypes: (pick(d, 'sportTypes', 'sports') || []).map(upper),
-    photos: photos.map((p) => (typeof p === 'string' ? p : pick(p, 'url', 'imageUrl'))).filter(Boolean),
-    status: upper(pick(d, 'status', 'approvalStatus')),
+    sportTypes: sportsArr.map((s) => upper(String(s).trim())).filter(Boolean),
+    photos: photosArr.map((p) => (typeof p === 'string' ? p.trim() : pick(p, 'url', 'imageUrl'))).filter(Boolean),
+    status,
     rejectionReason: pick(d, 'rejectionReason', 'rejectReason'),
     rating: pick(d, 'rating', 'averageRating'),
     reviewCount: pick(d, 'reviewCount', 'reviewsCount'),
-    startingPrice: pick(d, 'startingPrice', 'minPrice', 'pricePerHour'),
+    startingPrice: pick(d, 'startingPrice', 'price', 'minPrice', 'pricePerHour'),
+    amenities: amenitiesArr,
     openingTime: pick(d, 'openingTime', 'openTime'),
     closingTime: pick(d, 'closingTime', 'closeTime'),
     ownerName: pick(d, 'ownerName'),
@@ -72,53 +90,89 @@ export function toCourt(d) {
   if (!d) return null
   return {
     id: pick(d, 'id', 'courtId'),
-    facilityId: pick(d, 'facilityId'),
+    facilityId: pick(d, 'facilityId', 'venueId'),
     name: pick(d, 'name', 'courtName'),
     sportType: upper(pick(d, 'sportType', 'sport')),
-    pricePerHour: pick(d, 'pricePerHour', 'price', 'hourlyPrice'),
-    status: upper(pick(d, 'status')),
-    active: pick(d, 'active') ?? (upper(pick(d, 'status')) ? upper(pick(d, 'status')) === 'ACTIVE' : undefined),
+    pricePerHour: pick(d, 'pricePerHour', 'price', 'ratePerHour', 'pricePerSlot'),
+    status: upper(pick(d, 'status')) || 'ACTIVE',
   }
 }
 
 export function toSlot(d) {
-  const status = upper(pick(d, 'status')) || (pick(d, 'available') === false ? 'BOOKED' : 'AVAILABLE')
+  if (!d) return null
+  const startTime = pick(d, 'startTime', 'start')
+  const endTime = pick(d, 'endTime', 'end')
+  const id = pick(d, 'id', 'slotId') || (startTime && endTime ? `${startTime}-${endTime}` : undefined)
+  const st = upper(pick(d, 'status'))
+  const isAvail = pick(d, 'available', 'isAvailable')
+  const available = isAvail !== undefined && isAvail !== null ? isAvail === true : STATUS.slotAvailable.includes(st)
   return {
-    slotId: pick(d, 'slotId', 'id'),
+    id,
     courtId: pick(d, 'courtId'),
-    date: pick(d, 'date'),
-    startTime: pick(d, 'startTime', 'start'),
-    endTime: pick(d, 'endTime', 'end'),
-    price: pick(d, 'price', 'amount'),
-    status,
-    available: STATUS.slotAvailable.includes(status),
+    startTime,
+    endTime,
+    duration: pick(d, 'duration') || 60,
+    price: pick(d, 'price', 'rate', 'pricePerHour'),
+    status: st,
+    available,
+    holdExpiresAt: pick(d, 'holdExpiresAt'),
   }
+}
+
+export function bucketOf(booking) {
+  if (!booking) return 'other'
+  const st = upper(pick(booking, 'status', 'bookingStatus'))
+  if (STATUS.bookingCancelled.includes(st)) return 'cancelled'
+  if (STATUS.bookingCompleted.includes(st)) return 'completed'
+  if (STATUS.bookingPending.includes(st)) return 'pending'
+  if (STATUS.bookingUpcoming.includes(st)) return 'upcoming'
+  return 'other'
+}
+
+export function isCancellable(booking) {
+  if (!booking) return false
+  const st = upper(pick(booking, 'status', 'bookingStatus'))
+  return STATUS.bookingCancellable.includes(st)
 }
 
 export function toBooking(d) {
   if (!d) return null
-  const court = pick(d, 'court') || {}
-  const facility = pick(d, 'facility') || pick(court, 'facility') || {}
-  const slot = pick(d, 'slot', 'timeSlot') || {}
-  const payment = pick(d, 'payment') || {}
   return {
     id: pick(d, 'id', 'bookingId'),
-    reference: pick(d, 'reference', 'bookingReference', 'bookingCode', 'id', 'bookingId'),
-    courtId: pick(d, 'courtId') ?? court.id,
-    courtName: pick(d, 'courtName') ?? court.name,
-    facilityId: pick(d, 'facilityId') ?? facility.id,
-    facilityName: pick(d, 'facilityName') ?? facility.name,
-    slotId: pick(d, 'slotId') ?? slot.id,
-    date: pick(d, 'date', 'bookingDate') ?? slot.date,
-    startTime: pick(d, 'startTime') ?? slot.startTime,
-    endTime: pick(d, 'endTime') ?? slot.endTime,
+    facilityId: pick(d, 'facilityId', 'venueId'),
+    courtId: pick(d, 'courtId'),
+    facilityName: pick(d, 'facilityName', 'venueName'),
+    courtName: pick(d, 'courtName'),
+    sportType: upper(pick(d, 'sportType', 'sport')),
+    date: pick(d, 'date', 'bookingDate'),
+    startTime: pick(d, 'startTime', 'start'),
+    endTime: pick(d, 'endTime', 'end'),
+    duration: pick(d, 'durationMinutes', 'duration') || 60,
+    totalAmount: pick(d, 'totalAmount', 'totalPrice', 'amount', 'price'),
     status: upper(pick(d, 'status', 'bookingStatus')),
-    paymentStatus: upper(pick(d, 'paymentStatus') ?? payment.status),
-    paymentId: pick(d, 'paymentId') ?? payment.id,
-    totalAmount: pick(d, 'totalAmount', 'amount', 'price'),
-    playerName: pick(d, 'userName', 'playerName'),
-    playerEmail: pick(d, 'userEmail', 'playerEmail'),
-    createdAt: pick(d, 'createdAt'),
+    paymentStatus: upper(pick(d, 'paymentStatus', 'payment_status')),
+    paymentMethod: upper(pick(d, 'paymentMethod')),
+    transactionId: pick(d, 'transactionId'),
+    razorpayOrderId: pick(d, 'razorpayOrderId'),
+    razorpayKeyId: pick(d, 'razorpayKeyId'),
+    holdExpiresAt: pick(d, 'holdExpiresAt'),
+    gatewayConfigured: pick(d, 'gatewayConfigured'),
+    gatewayMessage: pick(d, 'gatewayMessage'),
+    createdAt: pick(d, 'createdAt', 'createdDate'),
+    userName: pick(d, 'userName', 'customerName'),
+    userEmail: pick(d, 'userEmail', 'customerEmail'),
+  }
+}
+
+export function toReview(d) {
+  if (!d) return null
+  return {
+    id: pick(d, 'id', 'reviewId'),
+    facilityId: pick(d, 'facilityId', 'venueId'),
+    rating: pick(d, 'rating', 'stars'),
+    comment: pick(d, 'comment', 'text', 'review'),
+    author: pick(d, 'author', 'userName', 'user'),
+    createdAt: pick(d, 'createdAt', 'date'),
   }
 }
 
@@ -128,30 +182,9 @@ export function toPayment(d) {
     id: pick(d, 'id', 'paymentId'),
     bookingId: pick(d, 'bookingId'),
     amount: pick(d, 'amount', 'totalAmount'),
-    status: upper(pick(d, 'status', 'paymentStatus')),
-    method: pick(d, 'paymentMethod', 'method'),
+    status: upper(pick(d, 'status', 'paymentStatus')) || 'SUCCESS',
+    paymentMethod: upper(pick(d, 'paymentMethod', 'method')),
     transactionId: pick(d, 'transactionId', 'reference'),
     message: pick(d, 'message'),
   }
 }
-
-export function toReview(d) {
-  return {
-    id: pick(d, 'id', 'reviewId'),
-    rating: pick(d, 'rating'),
-    comment: pick(d, 'comment', 'text', 'review'),
-    userName: pick(d, 'userName', 'author', 'name'),
-    createdAt: pick(d, 'createdAt', 'date'),
-  }
-}
-
-export const isAvailableSlot = (s) => STATUS.slotAvailable.includes(upper(s.status))
-export const isCancellable = (b) => STATUS.bookingCancellable.includes(b.status)
-export const bucketOf = (b) =>
-  STATUS.bookingCancelled.includes(b.status)
-    ? 'cancelled'
-    : STATUS.bookingCompleted.includes(b.status)
-      ? 'completed'
-      : STATUS.bookingUpcoming.includes(b.status)
-        ? 'upcoming'
-        : 'other'

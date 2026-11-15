@@ -8,11 +8,14 @@ export const clean = (obj) =>
 
 export async function listFacilities(filters = {}, signal) {
   const params = clean({
-    [PARAMS.search]: filters.search,
-    [PARAMS.sport]: filters.sport,
+    [PARAMS.search]: filters.search || filters.q,
+    location: filters.location,
+    city: filters.city,
+    [PARAMS.sport]: filters.sport && filters.sport !== 'ALL' ? filters.sport : undefined,
     [PARAMS.minPrice]: filters.minPrice,
     [PARAMS.maxPrice]: filters.maxPrice,
     [PARAMS.minRating]: filters.minRating,
+    amenity: filters.amenity,
     [PARAMS.sort]: filters.sort,
     [PARAMS.page]: filters.page,
     [PARAMS.size]: filters.size,
