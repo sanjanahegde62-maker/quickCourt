@@ -19,6 +19,7 @@ public class RazorpayOrderResponse {
     private String currency = "INR";
     private String keyId;
     private Long bookingId;
+    @com.fasterxml.jackson.annotation.JsonFormat(shape = com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
     private LocalDateTime holdExpiresAt;
     private boolean configured;
     private String message;

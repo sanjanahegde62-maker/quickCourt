@@ -12,6 +12,32 @@ import { useToast } from '../../components/common/Toast'
 import { STATUS } from '../../config/endpoints'
 import { dateLong, money, timeRange, titleCase } from '../../utils/format'
 
+/**
+ * Safely parse hold expiration timestamp accounting for timezone discrepancies
+ * between cloud servers (which emit UTC ISO strings without 'Z') and client browsers.
+ */
+function getHoldExpiryTime(holdExpiresAt) {
+  if (!holdExpiresAt) return Date.now() + 600000
+
+  const rawStr = String(holdExpiresAt).trim()
+  const rawDate = new Date(rawStr)
+  const utcDate = new Date(rawStr.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(rawStr) ? rawStr : `${rawStr}Z`)
+
+  const now = Date.now()
+  const diffRaw = Math.floor((rawDate.getTime() - now) / 1000)
+  const diffUtc = Math.floor((utcDate.getTime() - now) / 1000)
+
+  // If server runs in UTC (e.g. Render/Linux/Docker), diffUtc is in (0, 660] seconds
+  if (diffUtc > 0 && diffUtc <= 660) return utcDate.getTime()
+  // If server runs in local timezone (e.g. local Windows dev), diffRaw is in (0, 660] seconds
+  if (diffRaw > 0 && diffRaw <= 660) return rawDate.getTime()
+  if (diffUtc > 0) return utcDate.getTime()
+  if (diffRaw > 0) return rawDate.getTime()
+
+  // Genuinely expired
+  return Math.max(rawDate.getTime(), utcDate.getTime())
+}
+
 function StepIndicator({ currentStep = 4 }) {
   const steps = [
     { number: 1, label: 'Select Date' },
@@ -92,18 +118,23 @@ export default function Checkout() {
 
   // Calculate and update hold expiration countdown
   useEffect(() => {
-    const expiryTime = b?.holdExpiresAt ? new Date(b.holdExpiresAt).getTime() : Date.now() + 600000
-    const timer = setInterval(() => {
+    if (!b?.holdExpiresAt) return
+
+    const expiryTime = getHoldExpiryTime(b.holdExpiresAt)
+    const updateCountdown = () => {
       const now = Date.now()
       const diff = Math.floor((expiryTime - now) / 1000)
       if (diff <= 0) {
         setTimeLeft(0)
         setIsExpired(true)
-        clearInterval(timer)
       } else {
         setTimeLeft(diff)
+        setIsExpired(false)
       }
-    }, 1000)
+    }
+
+    updateCountdown()
+    const timer = setInterval(updateCountdown, 1000)
     return () => clearInterval(timer)
   }, [b?.holdExpiresAt])
 

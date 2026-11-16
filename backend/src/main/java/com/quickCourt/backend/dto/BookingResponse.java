@@ -47,6 +47,7 @@ public class BookingResponse {
 
     private String razorpayOrderId;
     private String razorpayKeyId;
+    @com.fasterxml.jackson.annotation.JsonFormat(shape = com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
     private LocalDateTime holdExpiresAt;
     private boolean gatewayConfigured;
     private String gatewayMessage;

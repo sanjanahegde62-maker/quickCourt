@@ -24,6 +24,7 @@ public class SlotResponse {
     private BigDecimal price;
     private String status; // AVAILABLE, BOOKED, HELD, PAST
     private boolean available;
+    @com.fasterxml.jackson.annotation.JsonFormat(shape = com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
     private LocalDateTime holdExpiresAt;
 
     public SlotResponse(String slotId, Long courtId, LocalDate date, LocalTime startTime, LocalTime endTime,
