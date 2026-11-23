@@ -10,11 +10,6 @@ import java.util.TimeZone;
 @SpringBootApplication
 public class BackendApplication {
 
-	@PostConstruct
-	public void init() {
-		TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
-	}
-
 	public static void main(String[] args) {
 		File dbDir = new File(System.getProperty("user.home"), ".quickcourt");
 		if (!dbDir.exists()) {

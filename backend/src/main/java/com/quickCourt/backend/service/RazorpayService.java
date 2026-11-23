@@ -98,7 +98,8 @@ public class RazorpayService {
             JSONObject orderRequest = new JSONObject();
             orderRequest.put("amount", amountInPaise);
             orderRequest.put("currency", "INR");
-            orderRequest.put("receipt", receipt != null ? receipt : "rcpt_" + bookingId);
+            orderRequest.put("receipt", receipt != null ? receipt : "rcpt_" + bookingId + "_" + System.currentTimeMillis());
+            orderRequest.put("payment_capture", 1);
 
             JSONObject notes = new JSONObject();
             notes.put("bookingId", String.valueOf(bookingId));
@@ -189,8 +190,27 @@ public class RazorpayService {
             RazorpayClient client = new RazorpayClient(keyId.trim(), keySecret.trim());
             return client.payments.fetch(paymentId);
         } catch (RazorpayException e) {
-            log.error("Failed to fetch Razorpay payment {}: {}", paymentId, e.getMessage());
-            throw new RuntimeException("Could not fetch payment details from Razorpay: " + e.getMessage(), e);
+            log.warn("Could not fetch payment details from Razorpay API for {}: {}", paymentId, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Explicitly captures an authorized Razorpay payment.
+     */
+    public com.razorpay.Payment capturePayment(String paymentId, long amountInPaise, String currency) {
+        if (!isConfigured()) {
+            return null;
+        }
+        try {
+            RazorpayClient client = new RazorpayClient(keyId.trim(), keySecret.trim());
+            JSONObject captureRequest = new JSONObject();
+            captureRequest.put("amount", amountInPaise);
+            captureRequest.put("currency", currency != null ? currency : "INR");
+            return client.payments.capture(paymentId, captureRequest);
+        } catch (RazorpayException e) {
+            log.error("Failed to capture Razorpay payment {}: {}", paymentId, e.getMessage());
+            throw new IllegalArgumentException("Razorpay capture failed: " + e.getMessage(), e);
         }
     }
 }

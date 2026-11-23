@@ -38,13 +38,13 @@ client.interceptors.request.use((config) => {
 })
 
 const FRIENDLY = {
-  400: 'Please check the details you entered.',
+  400: 'Invalid request. Please check the details you entered.',
   401: 'Your session has expired. Please log in again.',
   403: "You don't have permission to do that.",
-  404: 'We could not find that. It may not exist, or this feature is not available on the server yet.',
-  409: 'That conflicts with something that changed. Please refresh and try again.',
+  404: 'The requested resource was not found or is unavailable.',
+  409: 'Your booking hold has expired or conflicts with another reservation. Please select a new slot.',
   429: 'Too many requests. Please wait a moment and try again.',
-  500: 'Something went wrong on our side. Please try again.',
+  500: 'Payment service encountered an unexpected error. Please try again or use Demo Payment.',
 }
 
 /** Turns any Axios failure into { status, message, fieldErrors, cancelled }. Never exposes stack traces. */
@@ -52,10 +52,10 @@ export function normalizeError(err) {
   if (axios.isCancel(err) || err?.code === 'ERR_CANCELED') return { cancelled: true, message: '' }
   if (err?.normalized) return err
   if (!err?.response) {
-    return { normalized: true, status: 0, message: 'Network error. Check your connection and try again.' }
+    return { normalized: true, status: 0, message: 'Could not connect to payment service. Check your connection.' }
   }
   const { status, data } = err.response
-  const serverMsg = typeof data === 'string' ? '' : data?.message || data?.error
+  const serverMsg = typeof data === 'string' ? (data.length < 250 ? data : '') : data?.message || data?.error
   let fieldErrors = null
   const raw = data?.errors ?? data?.fieldErrors
   if (Array.isArray(raw)) {
@@ -66,8 +66,7 @@ export function normalizeError(err) {
   return {
     normalized: true,
     status,
-    // 5xx messages from the server are never shown verbatim
-    message: status >= 500 ? FRIENDLY[500] : serverMsg || FRIENDLY[status] || 'Unexpected error.',
+    message: status >= 500 ? FRIENDLY[500] : serverMsg || FRIENDLY[status] || 'Payment request could not be processed. Please try again.',
     fieldErrors,
   }
 }

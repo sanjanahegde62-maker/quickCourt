@@ -6,3 +6,6 @@ frontend/dist/
 frontend/node_modules/
 .idea/
 *.log
+report/
+*.docx
+*.pdf

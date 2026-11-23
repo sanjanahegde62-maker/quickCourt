@@ -266,6 +266,22 @@ public class BookingService {
         try {
             com.razorpay.Payment rzpPayment = razorpayService.fetchPayment(razorpayPaymentId);
             if (rzpPayment != null) {
+                // Check order ID matches
+                String fetchedOrderId = rzpPayment.get("order_id");
+                if (fetchedOrderId != null && !fetchedOrderId.equals(razorpayOrderId)) {
+                    log.error("Payment order_id mismatch for booking #{}: expected {} but received {}",
+                            bookingId, razorpayOrderId, fetchedOrderId);
+                    throw new IllegalArgumentException("Payment order mismatch detected. Verification rejected.");
+                }
+
+                // Check currency is INR
+                String currency = rzpPayment.get("currency");
+                if (currency != null && !"INR".equalsIgnoreCase(currency)) {
+                    log.error("Payment currency mismatch for booking #{}: expected INR but received {}",
+                            bookingId, currency);
+                    throw new IllegalArgumentException("Payment currency mismatch detected. Verification rejected.");
+                }
+
                 int amountInPaise = rzpPayment.get("amount");
                 long expectedPaise = booking.getTotalPrice().multiply(BigDecimal.valueOf(100)).longValue();
                 if (amountInPaise != expectedPaise) {
@@ -275,10 +291,22 @@ public class BookingService {
                 }
 
                 String status = rzpPayment.get("status");
+                if ("authorized".equalsIgnoreCase(status)) {
+                    try {
+                        rzpPayment = razorpayService.capturePayment(razorpayPaymentId, expectedPaise, "INR");
+                        status = rzpPayment.get("status");
+                    } catch (Exception ce) {
+                        log.warn("Capture attempt failed for authorized payment {}: {}", razorpayPaymentId, ce.getMessage());
+                    }
+                }
+
                 if (!"captured".equalsIgnoreCase(status) && !"authorized".equalsIgnoreCase(status)) {
-                    log.warn("Payment status is not captured/authorized: {}", status);
+                    log.error("Payment status is not captured/authorized: {}", status);
+                    throw new IllegalArgumentException("Payment is not in captured or authorized status: " + status);
                 }
             }
+        } catch (IllegalArgumentException e) {
+            throw e;
         } catch (Exception e) {
             log.warn("Direct Razorpay API verification check encountered an issue (signature remains valid): {}", e.getMessage());
         }

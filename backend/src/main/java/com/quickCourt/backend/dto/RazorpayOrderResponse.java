@@ -23,4 +23,16 @@ public class RazorpayOrderResponse {
     private LocalDateTime holdExpiresAt;
     private boolean configured;
     private String message;
+
+    public boolean isGatewayConfigured() {
+        return configured;
+    }
+
+    public Long getAmountPaise() {
+        return amountInPaise;
+    }
+
+    public String getGatewayMessage() {
+        return message;
+    }
 }
